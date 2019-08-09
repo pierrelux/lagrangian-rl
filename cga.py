@@ -9,9 +9,9 @@ def mixed_hessian(fun, a0=0, a1=1):
 
 if __name__ == "__main__":
     rng = np.random.RandomState(0)
-    A = rng.uniform(size=(2, 2)) + np.eye(2)
+    A = rng.uniform(size=(2, 3))
     x = rng.uniform(size=(2,))
-    y = rng.uniform(size=(2,))
+    y = rng.uniform(size=(3,))
 
     def f(x, y):
         return x.T @ A @ y
@@ -28,11 +28,11 @@ if __name__ == "__main__":
     Dyxg = mixed_hessian(g, 1, 0)
 
     eta = 0.5
-    for _ in range(1000):
-        print(f(x, y), np.linalg.norm(np.concatenate((x, y))))
+    for i in range(1000):
+        print(i, f(x, y), np.linalg.norm(np.concatenate((x, y))))
 
-        B = np.linalg.inv(np.eye(x.shape[0]) - (eta**2)*Dxyf(x, y)*Dyxg(x, y))
-        C = np.linalg.inv(np.eye(y.shape[0]) - (eta**2)*Dyxg(x, y)*Dxyf(x, y))
+        B = np.linalg.inv(np.eye(x.shape[0]) - (eta**2)*np.dot(Dxyf(x, y), Dyxg(x, y)))
+        C = np.linalg.inv(np.eye(y.shape[0]) - (eta**2)*np.dot(Dyxg(x, y), Dxyf(x, y)))
 
         deltax = -np.dot(B, (gradfx(x, y) - eta*np.dot(Dxyf(x, y), gradgy(x, y))))
         deltay = -np.dot(C, (gradgy(x, y) - eta*np.dot(Dyxg(x, y), gradfx(x, y))))
