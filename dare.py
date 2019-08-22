@@ -1,19 +1,21 @@
 import autograd.numpy as np
-from autograd import make_vjp
-from autograd.test_util import check_grads
+from autograd.tracer import getval
+from autograd import make_vjp, grad
+from autograd.misc.optimizers import adam
 from autograd.extend import primitive, defvjp
 from autograd.builtins import tuple as atuple
-from autograd.scipy.linalg import solve_discrete_are
 
 
-def riccati_operator(K, params):
-    A, B, Q, R = params
-    V = A.T @ K @ A
-    W = A.T @ K @ B
-    X = R + B.T @ K.T @ B
-    Y = B.T @ K @ A
-    Z = np.linalg.solve(X, Y)
-    return V - K - W@Z + Q
+def softmax(vals, temp=1., axis=-1):
+    """Batch softmax
+    Args:
+        vals (np.ndarray): Typically S x A array
+        t (float, optional): Defaults to 1.. Temperature parameter
+        axis (int, optional): Defaults to -1 (last axis). Reduction axis (eg. the "action" axis)
+    Returns:
+        np.ndarray: Array of same size as input
+    """
+    return np.exp((1./temp)*vals - logsumexp((1./temp)*vals, axis=axis, keepdims=True))
 
 
 def euclidean_distance(x, y):
@@ -103,22 +105,187 @@ def fixed_point_vjp(ans, f, params, initial_value, termination_condition):
     return implicit_vjp(f, ans, params)
 
 
+def riccati_operator(K, params):
+    """Discrete-Time Algebraic Riccati Operator
+
+    Args:
+        K (numpy.ndarray): Candidate solution as a square matrix (M x M)
+        A (numpy.ndarray): Square matrix (M x M)
+        B (numpy.ndarray): Input (M x N)
+        Q (numpy.ndarray): Input (M x M)
+        R (numpy.ndarray): Square matrix (N x N)
+
+    Returns:
+        numpy.ndarray: Application of the operator to the input
+    """
+    A, B, Q, R = params
+    V = A.T @ K @ A
+    W = A.T @ K @ B
+    X = R + B.T @ K.T @ B
+    Y = B.T @ K @ A
+    Z = np.linalg.solve(X, Y)
+    return V - K - W@Z + Q
+
+
+def generate_trajectory(policy, transition_function, reward_function, initial_function):
+    """Simulate a policy in a given environment
+
+    Args:
+        policy (callable): Unary callable taking a state (np.ndarray)
+            and returning an action (np.ndarray)
+        transition_function (callable): Binary callable taking a state
+            as first argument and action as second argument
+        reward_function (callable): Binary callable taking a state
+            as first argument and action as second argument
+        x0 ([type]): Initial state
+    """
+    x = initial_function()
+    while True:
+        u = policy(x)
+        r = reward_function(x, u)
+        x, x_prev = transition_function(x, u), x
+        yield np.hstack((x_prev, u, r, x))
+
+
+def make_lqr_env(A, B, Q, R, x0):
+    """Wrap an LQR problem into a functional environment
+
+    Args:
+        A (numpy.ndarray): Square matrix (M x M)
+        B (numpy.ndarray): Input (M x N)
+        Q (numpy.ndarray): Input (M x M)
+        R (numpy.ndarray): Square matrix (N x N)
+        x0 (numpy.ndarray): Fixed initial state (M, )
+
+    Returns:
+        tuple: Triple consisting of a transition, reward and initial function (in that order).
+    """
+    def _lqr_transition_function(x, u):
+        return A @ x + B @ u
+
+    def _lqr_reward_function(x, u):
+        return x.T @ Q @ x + u.T @ R @ u
+
+    def _lqr_initial_function():
+        return x0
+
+    return (_lqr_transition_function, _lqr_reward_function, _lqr_initial_function)
+
+
+def take_samples(trajectory_gen, steps=10):
+    """Consume a number of elements from a generator/iterable
+
+    Args:
+        trajectory_gen (iterable): Trajectory generator
+        steps (int, optional): Number of samples to obtain. Defaults to 10.
+
+    Returns:
+        list: list of 'steps' elements taken from the iterable
+    """
+    return np.vstack([data for _, data in zip(range(steps), trajectory_gen)])
+
+
+def log_diagonal_normal_pdf(policy, scale, states, actions):
+    """Log probability of taking some actions in some states
+
+    Args:
+        policy (callable): Unary callable taking a state and returning an action
+        variance (numpy.ndarray): Variance
+        states (numpy.ndarray): Batch of states (nbatch, ndim_states)
+        actions (numpy.ndarray): Batch of actions (nbatch, ndim_states)
+
+    Returns:
+        numpy.ndarray: Array of size (nbatch, 1)
+    """
+    variance = scale**2
+    log_scale = np.log(np.sqrt(2.*np.pi*variance))
+    distance = actions - policy(states)
+    return -log_scale - 0.5*(1./variance)*(distance**2)
+
+
 fixed_point = primitive(fixed_point)
-defvjp(fixed_point, None, fixed_point_vjp, None)
+defvjp(fixed_point, None, fixed_point_vjp)
+
+
+def make_riccati_policy(K, A, B, Q, R):
+    """Optimal policy from static gain matrix, expressed as a closure
+
+    Args:
+        K (numpy.ndarray): Solution to the discrete algebraic Riccati equation, (M x M)
+        A (numpy.ndarray): Square matrix (M x M)
+        B (numpy.ndarray): Input (M x N)
+        Q (numpy.ndarray): Input (M x M)
+        R (numpy.ndarray): Square matrix (N x N)
+
+    Returns:
+        callable: Unary callable taking a state (np.ndarray) and returning an action (np.ndarray)
+    """
+    del Q
+    X = R + B.T @ K.T @ B
+    Y = B.T @ K @ A
+    Z = -np.linalg.solve(X, Y).T
+
+    def _policy(state):
+        return np.dot(state, Z)
+
+    return _policy
+
+
+def make_smooth_policy(policy, scale, rng):
+    def _diagonal_normal_policy(state):
+        return rng.normal(getval(policy(state)), scale)
+    return _diagonal_normal_policy
+
+
+def solve_riccati(A, B, Q, R):
+    params = atuple((A, B, Q, R))
+    return fixed_point(lambda k, p: k + riccati_operator(k, p),
+                       params, np.zeros_like(A), distance_predicate(tol=1e-5))
+
+
+def take_rollouts(policy, env, nrollouts=1, trajectory_len=100):
+    rollouts = [take_samples(generate_trajectory(policy, *env), trajectory_len)
+                for _ in range(nrollouts)]
+    return np.dstack(rollouts)
+
 
 if __name__ == "__main__":
     A = np.array([[1., 1.], [0., 1.]])
     B = np.array([[0.], [1.]])
     Q = np.array([[1., 0.], [0., 0.]])
-    R = 1.
+    R = np.array([[1.]])
 
-    def F(K, params):
-        return K + riccati_operator(K, params)
+    x0 = np.array([-1, 0])
+    env = make_lqr_env(A, B, Q, R, x0)
+    standard_deviation = 1e-2
 
-    K0 = np.zeros_like(A)
+    rng = np.random.RandomState(0)
 
-    def test(a):
-        params = atuple((a, B, Q, R))
-        return fixed_point(F, params, K0, distance_predicate())
+    def performance_measure(Ahat):
+        params = atuple((Ahat, B, Q, R))
+        K = solve_riccati(*params)
+        riccati_policy = make_riccati_policy(K, *params)
 
-    check_grads(test, modes=['rev', ], order=1)(A)
+        # Take multiple rollouts
+        smooth_riccati_policy = make_smooth_policy(riccati_policy, standard_deviation, rng)
+        samples = take_samples(generate_trajectory(smooth_riccati_policy, *env), 100)
+        states = samples[:, :2]
+        actions = samples[:, 2]
+        rewards = samples[:, 3]
+
+        reward_accumulation = np.cumsum(rewards[::-1])[::-1]
+        logpdf = log_diagonal_normal_pdf(
+            riccati_policy, standard_deviation, states, actions[:, np.newaxis])
+
+        return np.mean(reward_accumulation[:, np.newaxis]*logpdf)
+
+    def callback(x, i, g):
+        K = solve_riccati(x, B, Q, R)
+        samples = take_rollouts(make_riccati_policy(K, x, B, Q, R), env, nrollouts=1)
+        print(f"{i}, {performance_measure(x):.8f}, {np.mean(samples[:, 3, :])}")
+
+    Ahat_init = np.array([[1., 0.8], [0., 0.]])
+
+    gradfun = grad(performance_measure)
+    solution = adam(lambda x, i: gradfun(x), Ahat_init,
+                    callback=callback, step_size=0.01, num_iters=100)
