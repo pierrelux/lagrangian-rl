@@ -240,13 +240,26 @@ def make_smooth_policy(policy, scale, rng):
 def solve_riccati(A, B, Q, R):
     params = atuple((A, B, Q, R))
     return fixed_point(lambda k, p: k + riccati_operator(k, p),
-                       params, np.zeros_like(A), distance_predicate(tol=1e-5))
+                       params, np.eye(A.shape[0]), distance_predicate(tol=1e-5))
 
 
 def take_rollouts(policy, env, nrollouts=1, trajectory_len=100):
     rollouts = [take_samples(generate_trajectory(policy, *env), trajectory_len)
                 for _ in range(nrollouts)]
     return np.dstack(rollouts)
+
+
+def controllability_matrix(A, B):
+    M = [B]
+    for i in range(A.shape[0]-1):
+        M.append(np.dot(A, M[-1]))
+    return np.hstack(M)
+
+
+def controllable(A, B):
+    M = controllability_matrix(A, B)
+    rank = np.linalg.matrix_rank(M)
+    return rank == A.shape[0]
 
 
 if __name__ == "__main__":
@@ -266,7 +279,6 @@ if __name__ == "__main__":
         K = solve_riccati(*params)
         riccati_policy = make_riccati_policy(K, *params)
 
-        # Take multiple rollouts
         smooth_riccati_policy = make_smooth_policy(riccati_policy, standard_deviation, rng)
         samples = take_samples(generate_trajectory(smooth_riccati_policy, *env), 100)
         states = samples[:, :2]
@@ -285,7 +297,6 @@ if __name__ == "__main__":
         print(f"{i}, {performance_measure(x):.8f}, {np.mean(samples[:, 3, :])}")
 
     Ahat_init = np.array([[1., 0.8], [0., 0.]])
-
     gradfun = grad(performance_measure)
     solution = adam(lambda x, i: gradfun(x), Ahat_init,
                     callback=callback, step_size=0.01, num_iters=100)
