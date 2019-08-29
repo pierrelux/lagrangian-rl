@@ -3,8 +3,6 @@ from jax import ops
 import jax.numpy as np
 import jax.scipy
 
-import dynamical
-
 
 def forward_pass(x_init, K, k, F, f):
 
@@ -18,13 +16,6 @@ def forward_pass(x_init, K, k, F, f):
 
 
 def backwards_pass(C, c, F, f):
-
-    def _lu_solve(p, l, u, b):
-        pb = np.dot(p, b)
-        y = jax.scipy.linalg.solve_triangular(l, pb, lower=True,
-                                              unit_diagonal=True)
-        return jax.scipy.linalg.solve_triangular(u, y, lower=False,
-                                                 unit_diagonal=False)
 
     def backwards_step(carry, params):
         V_tp1, v_tp1 = carry
@@ -40,9 +31,10 @@ def backwards_pass(C, c, F, f):
         Q_ux, Q_uu = np.split(Q_u, (n,), axis=1)
         q_x, q_u = np.split(q_t, (n,))
 
-        p, l, u = jax.scipy.linalg.lu(Q_uu)
-        K_t = -_lu_solve(p, l, u, Q_ux)
-        k_t = -_lu_solve(p, l, u, q_u)
+        Quxqu = np.concatenate((Q_ux, q_u[:, None]), axis=1)
+        Ktkt = -jax.scipy.linalg.solve(Q_uu, Quxqu, sym_pos=True)
+        K_t, k_t = np.split(Ktkt, (n,), axis=1)
+        k_t = k_t[:, 0]
 
         KTQuu = K_t.T @ Q_uu
         V_t = Q_xx + Q_xu @ K_t + K_t.T @ Q_ux + KTQuu @ K_t

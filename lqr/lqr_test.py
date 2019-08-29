@@ -1,3 +1,5 @@
+from functools import partial
+
 from absl.testing import absltest
 
 import lqr
@@ -22,7 +24,7 @@ def _pendulum_problem():
     x_goal = np.array([np.pi, 0.])
     qmat = np.array([[2, 0.],
                      [0., 1]])
-    rmat = np.ones(1)
+    rmat = np.ones((1, 1))
     return dynamics, x_goal, qmat, rmat
 
 
@@ -48,6 +50,7 @@ class LQRTest(jax.test_util.JaxTestCase):
 
         kmat = lqr.continuous.infinite_lqr(dynamics, x_goal, np.zeros((1,)), 0,
                                            qmat, rmat)
+        print(kmat)
         policy = lqr.policy(kmat, x_goal)
 
         for x_offset in offsets:
@@ -66,8 +69,8 @@ class LQRTest(jax.test_util.JaxTestCase):
         dt = 10./horizon
         amat, bmat = dynamical.linearize_dynamics(dynamics, x_goal,
                                                   np.zeros((1,)), 0)
-        amat = amat*dt
-        bmat = bmat*dt
+        amat = amat * dt
+        bmat = bmat * dt
 
         kmat, kvec = lqr.discrete.finite_horizon_lqr(amat, bmat, x_goal,
                                                      np.zeros((1,)),
@@ -80,12 +83,25 @@ class LQRTest(jax.test_util.JaxTestCase):
             return x_goal + amat @ (x - x_goal) + bmat @ u
 
         for x_offset in offsets:
-            x = x_goal + np.array(x_offset)
+            x_init = x_goal + np.array(x_offset)
+            x = x_init
 
             for t in range(horizon):
                 x = linear_dynamics(x, policy(x, t), t)
 
             self.assertAllClose(x_goal, x, check_dtypes=True)
+
+            def _solved_policy(A, B, Q, R):
+                kmat, kvec = lqr.discrete.finite_horizon_lqr(A, B, x_goal,
+                                                             np.zeros((1,)),
+                                                             Q, R,
+                                                             horizon)
+                policy = lqr.policy(kmat, x_goal, kvec)
+                return policy(x_init, 0)
+
+            jax.test_util.check_vjp(_solved_policy,
+                                    partial(jax.vjp, _solved_policy),
+                                    (amat, bmat, qmat, rmat))
 
 
 if __name__ == "__main__":
