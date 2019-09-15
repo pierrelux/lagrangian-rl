@@ -5,9 +5,13 @@ from jax.scipy.special import logsumexp
 from jax.experimental import optimizers
 
 from jax.experimental.stax import softmax
-from fax.implicit.twophase import two_phase_solver
 
 import polytope
+
+from fax import converge
+from fax.lagrangian import cga
+from fax.lagrangian import util as lagr_util
+from fax.implicit.twophase import two_phase_solver
 
 
 def policy_evaluation(P, R, gamma, policy):
@@ -33,14 +37,9 @@ def policy_evaluation(P, R, gamma, policy):
     return vf, qf
 
 
-if __name__ == "__main__":
-    temperature = 1e-2
-    temperature_transition = 1e-2
-
-    mdp = polytope.dadashi_fig2d()
+def implicit_differentiation(mdp, temperature, temperature_transition):
     nstates = mdp[0].shape[-1]
     true_transition, true_reward, true_discount = mdp
-
     initial_distribution = np.ones(nstates)/nstates
 
     def param_func(params):
@@ -74,11 +73,86 @@ if __name__ == "__main__":
         params = get_params(opt_state)
         return opt_update(i, grad(omd_objective)(params), opt_state)
 
-    p0 = (np.zeros_like(true_transition), np.zeros_like(true_reward))
-    opt_state = opt_init(p0)
+    init_params = (np.zeros_like(true_transition), np.zeros_like(true_reward))
+    opt_state = opt_init(init_params)
 
     for i in range(100):
         opt_state = update(i, opt_state)
         params = get_params(opt_state)
         objective_value = omd_objective(params)
         print(objective_value)
+
+
+def smooth_bellman_optimality_operator(x, params):
+    transition, reward, discount, temperature = params
+    return reward + discount * np.einsum('ast,t->sa', transition, temperature *
+                                         logsumexp((1. / temperature) * x, axis=1))
+
+
+def competitive_differentiation(mdp, temperature, temperature_transition):
+    nstates = mdp[0].shape[-1]
+    true_transition, true_reward, true_discount = mdp
+    initial_distribution = np.ones(nstates)/nstates
+
+    def f(decision_variables):
+        x, theta = decision_variables
+        transition_logits, reward_hat = theta
+
+        transition_hat = softmax((1./temperature_transition)*transition_logits)
+        op_params = (transition_hat, reward_hat, true_discount, temperature)
+
+        return smooth_bellman_optimality_operator(x, op_params)
+
+    def objective(decision_variables):
+        x, _ = decision_variables
+        policy = softmax((1./temperature)*x)
+        vf, _ = policy_evaluation(*mdp, policy)
+        return -(initial_distribution @ vf)
+
+    def equality_constraint(decision_variables):
+        x, _ = decision_variables
+        return f(decision_variables) - x
+
+    # L((x, theta), lambda), decision_variables = (x, theta)
+    init_mult, lagrangian, get_decision_variables = lagr_util.make_lagrangian(
+        objective, equality_constraint)
+
+    step_size = 0.15
+    opt_init, opt_update, get_lagrangian_variables = cga.cga_lagrange_min(step_size, lagrangian)
+
+    rtol = atol = 1e-6
+
+    def convergence_test(x_new, x_old):
+        return converge.max_diff_test(x_new, x_old, rtol, atol)
+
+    @jax.jit
+    def step(i, opt_state):
+        lagrangian_variables = get_lagrangian_variables(opt_state)
+        grads = jax.grad(lagrangian, (0, 1))(*lagrangian_variables)
+        return opt_update(i, grads, opt_state)
+
+    # (x, theta)
+    init_decision_variables = (
+        np.zeros_like(true_reward),
+        (np.zeros_like(true_transition), np.zeros_like(true_reward))
+    )
+    lagrangian_variables = init_mult(init_decision_variables)
+    opt_state = opt_init(lagrangian_variables)
+
+    for i in range(1000):
+        old_lagrangian_variables = get_lagrangian_variables(opt_state)
+        # print(old_lagrangian_params)
+        old_decision_variables = get_decision_variables(old_lagrangian_variables)
+        print(i, objective(old_decision_variables), np.linalg.norm(
+            equality_constraint(old_decision_variables)))
+        opt_state = step(i, opt_state)
+        if convergence_test(get_lagrangian_variables(opt_state), old_lagrangian_variables):
+            break
+
+
+if __name__ == "__main__":
+    temperature = 1e-2
+    temperature_transition = 1e-2
+
+    mdp = polytope.dadashi_fig2d()
+    competitive_differentiation(mdp, temperature, temperature_transition)

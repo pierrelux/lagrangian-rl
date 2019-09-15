@@ -89,6 +89,6 @@ if __name__ == "__main__":
         return vf(x0)
 
     gradfun = jit(grad(objective))
-    for _ in range(1000):
+    for _ in range(100):
         K = K - 0.01*gradfun(K)
         print(objective(K))

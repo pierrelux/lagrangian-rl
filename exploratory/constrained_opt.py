@@ -31,16 +31,20 @@ def make_saddle_point_problem(objective_function, equality_constraint):
 
 if __name__ == "__main__":
 
-    def objective_function(x):
-        return (x[0]**2.)*x[1]
-
-    def equality_constraint(x):
-        return 2.*(x[0]**2.) + x[1]**2. - 3.
-
     rng = random.PRNGKey(42)
     rng_x, rng_y = random.split(rng)
-    init_vals = (random.uniform(rng_x, shape=(2,)), random.uniform(rng_y))
+    init_vals = (random.uniform(rng_x, shape=(3,)), random.uniform(rng_y))
 
+    def make_objective_function(u):
+        def _objective_function(x):
+            return np.dot(x, u)
+        return _objective_function
+
+    def equality_constraint(x):
+        return np.sum(x**2) - 1
+
+    u = np.array([4, 5, 6])
+    objective_function = make_objective_function(u)
     f, g = make_saddle_point_problem(objective_function, equality_constraint)
 
     eta = 0.1
@@ -51,4 +55,5 @@ if __name__ == "__main__":
         return converge.max_diff_test(x_new, x_old, rtol, atol)
 
     solution = cga.cga_iteration(init_vals, f, g, convergence_test, max_iter, eta)
-    print(solution)
+
+    print(solution, u/np.linalg.norm(u))
