@@ -3,8 +3,9 @@ from functools import partial
 from absl.testing import absltest
 
 import lqr
-import dynamical
-import pendulum
+from lqr import cartpole
+from lqr import dynamical
+from lqr import pendulum
 
 import scipy
 import numpy as onp
@@ -28,14 +29,28 @@ def _pendulum_problem():
     return dynamics, x_goal, qmat, rmat
 
 
-def _integrate(dynamics, policy, x_init):
+def _cartpole_problem():
+    params = cartpole.CartPoleParams(length=1, cart_mass=1, pole_mass=1.,
+                                     g=-9.8)
+    dynamics = cartpole.cartpole_dynamics(params)
+
+    x_goal = np.array([np.pi, 0., 0., 0.])
+    qmat = np.array([[2., 0., 0., 0.],
+                     [0., 1., 0., 0.],
+                     [0., 0., 1., 0.],
+                     [0., 0., 0., 1.]])
+    rmat = np.ones((1, 1))
+    return dynamics, x_goal, qmat, rmat
+
+
+def _integrate(dynamics, policy, x_init, duration=10.):
     final_dynamics = dynamical.controlled_dynamics(policy, dynamics)
     final_dynamics = jax.jit(final_dynamics)
 
     return scipy.integrate.odeint(
         final_dynamics,
         x_init,
-        [0., 10.],
+        [0., duration],
     )
 
 
@@ -50,12 +65,27 @@ class LQRTest(jax.test_util.JaxTestCase):
 
         kmat = lqr.continuous.infinite_lqr(dynamics, x_goal, np.zeros((1,)), 0,
                                            qmat, rmat)
-        print(kmat)
         policy = lqr.policy(kmat, x_goal)
 
         for x_offset in offsets:
             x_init = x_goal + np.array(x_offset)
             xs = _integrate(dynamics, policy, x_init)
+            self.assertAllClose(x_goal, xs[-1], check_dtypes=True)
+
+    def testContinuousInfiniteHorizonPendulum(self):
+        offsets = [onp.array([0., 0., 0., 0.]),
+                   onp.array([-0.3, 0., 0., 0.]),
+                   onp.array([-0.6, 0., 0.2, 0.]),
+                   onp.array([0.2, 0., 0.2, 0.])]
+        dynamics, x_goal, qmat, rmat = _cartpole_problem()
+
+        kmat = lqr.continuous.infinite_lqr(dynamics, x_goal, np.zeros((1,)), 0,
+                                           qmat, rmat)
+        policy = lqr.policy(kmat, x_goal)
+
+        for x_offset in offsets:
+            x_init = x_goal + np.array(x_offset)
+            xs = _integrate(dynamics, policy, x_init, duration=20.)
             self.assertAllClose(x_goal, xs[-1], check_dtypes=True)
 
     def testDiscreteFiniteHorizonPendulum(self):
