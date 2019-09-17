@@ -1,8 +1,13 @@
 import collections
 
+import jax
 from jax import lax
 from jax import random
 import jax.numpy as np
+
+from lqr import discrete
+
+from fax import lagrangian
 
 LQR = collections.namedtuple("LQR", "A B Q R")
 
@@ -85,3 +90,20 @@ def lqr_traj(lqr_initializer, xs_initializer, us_initializer):
         return lqr, xs, us
 
     return init
+
+
+def finite_horizon_kkt(lqr_traj_initializer):
+    init_mult, lagr_func, get_params = discrete.make_finite_horizon_lagrangian()
+
+    def init(key, shape, dtype=np.float32):
+        return init_mult(lqr_traj_initializer(key, shape, dtype))
+
+    def kkt_constraints(params):
+        lqr, xs, us = get_params(params)
+        ms = lagrangian.get_multipliers(params)
+
+        grad_func = jax.grad(lambda xs, us: lagr_func((lqr, xs, us), ms),
+                             (0, 1))
+        return grad_func(xs, us)
+
+    return init, kkt_constraints, get_params
