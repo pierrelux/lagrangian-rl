@@ -1,7 +1,7 @@
-import dynamical
-
 import scipy
 import numpy as np
+
+from lqr import dynamical
 
 
 def infinite_lqr(dynamics, x_0, u_0, t, qmat, rmat):

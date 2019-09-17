@@ -1,16 +1,6 @@
 import jax.numpy as np
 
 
-def riccati_operator(K, params):
-    A, B, Q, R = params
-    V = A.T @ K @ A
-    W = A.T @ K @ B
-    X = R + B.T @ K.T @ B
-    Y = B.T @ K @ A
-    Z = np.linalg.solve(X, Y)
-    return V - K - W@Z + Q
-
-
 def policy(kmat, x_goal, kvec=None):
     def policy(x, t):
         kmat_t = kmat
