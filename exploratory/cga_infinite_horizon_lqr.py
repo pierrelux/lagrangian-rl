@@ -1,5 +1,4 @@
 import collections
-from functools import partial
 
 import jax
 from jax import random
@@ -126,8 +125,12 @@ def main():
     def step(i, opt_state, data):
         params = get_lagr_params(opt_state)
 
-        grads = jax.grad(lagr_func, (0, 1))(*params, data=data)
-        return opt_update(i, grads, opt_state, data=data)
+        val, grads = jax.value_and_grad(lagr_func, (0, 1))(*params, data=data)
+        logs = {
+            "lagrangian": val,
+            "batch_loss": batch_loss(get_params(params), data),
+        }
+        return opt_update(i, grads, opt_state, data=data), logs
 
     # initialize all parameters
     rng, params_key = random.split(rng)
@@ -138,7 +141,8 @@ def main():
 
     for i in range(500):
         old_params = get_lagr_params(opt_state)
-        opt_state = step(i, opt_state, data=next(batch_gen))
+        opt_state, logs = step(i, opt_state, data=next(batch_gen))
+        print(logs)
 
         if convergence_test(get_lagr_params(opt_state), old_params):
             print("CONVERGED!! Step:", i)
