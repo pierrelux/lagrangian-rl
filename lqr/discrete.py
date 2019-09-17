@@ -1,10 +1,28 @@
 from jax import lax
 from jax import ops
+from jax import tree_util
 import jax.numpy as np
 import jax.scipy
 
+from fax import lagrangian
 
-def forward_pass(x_init, K, k, F, f):
+
+def rollout(x_init, lqr, us):
+
+    if lqr.A.ndim < 3:
+        T = us.shape[0]
+        lqr = tree_util.tree_map(lambda x: np.repeat(x[None, :, :], (T, 1, 1)),
+                                 lqr)
+
+    def forward_step(x_t, params):
+        lqr, u_t = params
+        x_tp1 = lqr.A @ x_t + lqr.B @ u_t
+        return x_tp1, None
+
+    return lax.scan(forward_step, x_init, (lqr, us))[1]
+
+
+def forward_recursion(x_init, K, k, F, f):
 
     def forward_step(x_t, params):
         (K_t, k_t, F_t, f_t) = params
@@ -15,7 +33,7 @@ def forward_pass(x_init, K, k, F, f):
     return lax.scan(forward_step, x_init, (K, k, F, f))[1]
 
 
-def backwards_pass(C, c, F, f):
+def backwards_recursion(C, c, F, f):
 
     def backwards_step(carry, params):
         V_tp1, v_tp1 = carry
@@ -61,5 +79,30 @@ def finite_horizon_lqr(amat, bmat, x_goal, u_goal, qmat, rmat, horizon):
     C = np.repeat(C[None, :, :], horizon, axis=0)
     c = np.zeros((horizon, n + m))
 
-    K, k = backwards_pass(C, c, F, f)
+    K, k = backwards_recursion(C, c, F, f)
     return K[0], k[0]
+
+
+def make_finite_horizon_lagrangian():
+
+    def cost(params):
+        lqr, xs, us = params
+
+        einsum_op = "ij,ti->tj"
+        if lqr.A.ndim == 3:
+            einsum_op = "t" + einsum_op
+
+        return (np.einsum(einsum_op, lqr.Q, xs)
+                + np.einsum(einsum_op, lqr.R, us))
+
+    def constraints(params):
+        lqr, xs, us = params
+
+        einsum_op = "ij,ti->tj"
+        if lqr.A.ndim == 3:
+            einsum_op = "t" + einsum_op
+
+        return (np.einsum(einsum_op, lqr.A, xs)
+                + np.einsum(einsum_op, lqr.B, us))
+
+    return lagrangian.make_lagrangian(cost, constraints)
