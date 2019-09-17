@@ -3,7 +3,7 @@ import collections
 import jax.numpy as np
 
 PendulumParams = collections.namedtuple(
-  "PendulumParams", "length mass g"
+  "PendulumParams", "length mass g drag"
 )
 
 
@@ -13,6 +13,7 @@ def pendulum_dynamics(params):
         w = np.product(params)
         # assume point mass and massless arm
         inertia = params.mass * params.length ** 2
-        return np.stack((x[1], (w*np.sin(x[0]) + u[0])/inertia))
+        force = w*np.sin(x[0]) + u[0] - x[1]*params.drag
+        return np.stack((x[1], force/inertia))
 
     return dxdt

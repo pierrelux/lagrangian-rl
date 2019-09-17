@@ -106,3 +106,19 @@ def make_finite_horizon_lagrangian():
                 + np.einsum(einsum_op, lqr.B, us))
 
     return lagrangian.make_lagrangian(cost, constraints)
+
+
+def riccati_operator(pmat, params):
+    A, B, Q, R = params
+    V = A.T @ pmat @ A
+    W = A.T @ pmat @ B
+    X = R + B.T @ pmat @ B
+    Y = B.T @ pmat @ A
+    Z = np.linalg.solve(X, Y)
+    return V - W @ Z + Q
+
+
+def gain_matrix(pmat, lqr):
+    return jax.scipy.linalg.solve(lqr.R + lqr.B.T @ pmat @ lqr.B,
+                                  lqr.B.T @ pmat @ lqr.A,
+                                  sym_pos=True)

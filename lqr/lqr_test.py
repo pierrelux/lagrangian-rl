@@ -19,7 +19,7 @@ config.update("jax_enable_x64", True)
 
 
 def _pendulum_problem():
-    params = pendulum.PendulumParams(length=1, mass=1, g=-9.8)
+    params = pendulum.PendulumParams(length=1, mass=1, g=-9.8, drag=0.)
     dynamics = pendulum.pendulum_dynamics(params)
 
     x_goal = np.array([np.pi, 0.])
