@@ -362,7 +362,7 @@ def run_and_export(run_input):
 
 
 def main():
-    num_seeds = 10
+    num_seeds = 40
     seeds = onp.random.randint(0, 2**32 - 1, num_seeds)
     np_seeds = onp.random.randint(0, 2**32 - 1, num_seeds)
 
