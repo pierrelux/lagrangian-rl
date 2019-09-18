@@ -73,7 +73,8 @@ def loss(targets, estimates):
 
 def run_experiment(n, m, batch_size, num_train_samples, num_test_samples,
                    num_eval_steps, seed, numpy_seed, dynamics, x_goal, u_goal,
-                   qmat, rmat, lr, rtol, atol, dt, state_sampler):
+                   qmat, rmat, lr_cost, lr_constraints, rtol, atol, dt,
+                   state_sampler):
     rng = random.PRNGKey(seed)
     onp.random.seed(numpy_seed)
 
@@ -128,7 +129,8 @@ def run_experiment(n, m, batch_size, num_train_samples, num_test_samples,
                                                                   constraints)
 
     # set up training functions
-    opt_init, opt_update, get_lagr_params = cga.cga_lagrange_min(lr, lagr_func)
+    opt_init, opt_update, get_lagr_params = cga.cga_lagrange_min(
+        lr_cost, lagr_func, lr_multipliers=lr_constraints)
 
     def convergence_test(x_new, x_old):
         return converge.max_diff_test(x_new, x_old, rtol, atol)
@@ -251,8 +253,8 @@ def main():
     # rmat = np.ones((1, 1))
     #
     # all_times, avg_diff, test_loss = run_experiment(
-    #     lr=0.5,
-    #     rtol=1e-3,
+    #     lr_cost = 0.01,
+    #     lr_constraints = 0.1,
     #     atol=1e-5,
     #     seed=0,
     #     numpy_seed=42,
@@ -306,9 +308,10 @@ def main():
     rmat = np.ones((1, 1))
 
     all_times, avg_diff, test_loss = run_experiment(
-        lr=0.01,
+        lr_cost=0.01,
+        lr_constraints=0.1,
         rtol=1e-3,
-        atol=1e-4,
+        atol=1e-3,
         seed=0,
         numpy_seed=42,
         n=n,
