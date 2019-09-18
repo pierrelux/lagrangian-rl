@@ -158,6 +158,8 @@ def run_experiment(n, m, batch_size, num_train_samples, num_test_samples,
 
     all_params = []
     all_times = []
+    all_train_loss = []
+    all_lagrangian = []
 
     for i in range(num_train_iterations):
         old_params = get_lagr_params(opt_state)
@@ -169,6 +171,8 @@ def run_experiment(n, m, batch_size, num_train_samples, num_test_samples,
 
         opt_state, logs = step(i, opt_state, data=next(batch_gen))
         print(logs)
+        all_train_loss.append(logs["train loss"])
+        all_lagrangian.append(logs["lagrangian"])
 
         if convergence_test(get_lagr_params(opt_state), old_params):
             print("CONVERGED!! Step:", i)
@@ -197,10 +201,10 @@ def run_experiment(n, m, batch_size, num_train_samples, num_test_samples,
 
     avg_diff, test_loss = zip(*[evaluate_params(p) for p in all_params])
 
-    return all_times, avg_diff, test_loss
+    return all_times, avg_diff, test_loss, all_train_loss, all_lagrangian
 
 
-def plot(all_times, avg_diff, test_loss, title=None):
+def plot(all_times, avg_diff, test_loss, train_loss, lagr, title=None):
     plt.figure()
     plt.plot(np.arange(len(avg_diff)), avg_diff)
     plt.ylabel("Mean cost-to-go difference")
@@ -226,6 +230,16 @@ def plot(all_times, avg_diff, test_loss, title=None):
     plt.plot(np.array(all_times) - all_times[0], test_loss)
     plt.ylabel("Test loss")
     plt.xlabel("Relative walltime")
+    if title:
+        plt.title(title)
+
+    lagr_plus_loss = np.array(lagr) + np.array(train_loss)
+    plt.figure()
+    plt.plot(np.arange(1, len(avg_diff)), train_loss, label="Train loss")
+    plt.plot(np.arange(1, len(avg_diff)), lagr_plus_loss,
+             label="Train Lagrangian + loss")
+    plt.xlabel("# iterations")
+    plt.legend()
     if title:
         plt.title(title)
 
@@ -255,7 +269,7 @@ def main():
                      [0., 1]])
     rmat = np.ones((1, 1))
 
-    all_times, avg_diff, test_loss = run_experiment(
+    all_times, avg_diff, test_loss, train_loss, lagr = run_experiment(
         lr_cost=0.1,
         lr_constraints=0.5,
         rtol=1e-3,
@@ -280,7 +294,7 @@ def main():
     print("final avg diff:", avg_diff[-1])
     print("final test loss:", test_loss[-1])
 
-    plot(all_times, avg_diff, test_loss, "Pendulum")
+    plot(all_times, avg_diff, test_loss, train_loss, lagr, "Pendulum")
     plt.show()
 
     # run cartpole
@@ -315,7 +329,7 @@ def main():
                      [0., 0., 0., 1.]])
     rmat = np.ones((1, 1))
 
-    all_times, avg_diff, test_loss = run_experiment(
+    all_times, avg_diff, test_loss, train_loss, lagr = run_experiment(
         lr_cost=0.005,
         lr_constraints=0.5,
         rtol=1e-3,
@@ -340,7 +354,7 @@ def main():
     print("final avg diff:", avg_diff[-1])
     print("final test loss:", test_loss[-1])
 
-    plot(all_times, avg_diff, test_loss, "Cartpole")
+    plot(all_times, avg_diff, test_loss, train_loss, lagr, "Cartpole")
     plt.show()
 
 
