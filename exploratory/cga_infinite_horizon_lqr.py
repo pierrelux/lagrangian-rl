@@ -1,4 +1,7 @@
 import collections
+import itertools
+import multiprocessing
+import pickle
 import time
 
 import jax
@@ -39,7 +42,6 @@ def safe_block_until_ready(x):
 
 def solve_discrete_lqr(lqr):
     pmat = olinalg.solve_discrete_are(lqr.A, lqr.B, lqr.Q, lqr.R)
-    print("pmat", pmat)
     return olinalg.solve(lqr.R + lqr.B.T @ pmat @ lqr.B,
                          lqr.B.T @ pmat @ lqr.A,
                          sym_pos=True)
@@ -48,8 +50,7 @@ def solve_discrete_lqr(lqr):
 def generate_lqr_demos(xs, x_goal, lqr):
     lqr = tree_util.tree_map(lambda x: onp.array(x).astype(np.float64), lqr)
     kmat = solve_discrete_lqr(lqr)
-    print("lqr", lqr)
-    print("true kmat", kmat)
+
     policy = vectorize.vectorize("(i),()->(j)")(util.policy(kmat, x_goal))
 
     return Demos(xs=xs, us=policy(xs, np.zeros((), dtype=np.int32)))
@@ -171,12 +172,12 @@ def run_experiment(n, m, batch_size, num_train_samples, num_test_samples,
         all_times.append(time.perf_counter())
 
         opt_state, logs = step(i, opt_state, data=next(batch_gen))
-        print(logs)
+        # print(logs)
         all_train_loss.append(logs["train loss"])
         all_lagrangian.append(logs["lagrangian"])
 
         if convergence_test(get_lagr_params(opt_state), old_params):
-            print("CONVERGED!! Step:", i)
+            # print("CONVERGED!! Step:", i)
             break
 
     all_params.append(get_lagr_params(opt_state))
@@ -240,58 +241,59 @@ def plot(all_times, avg_diff, test_loss, train_loss, lagr, title):
     tikzplotlib.save(title + "-train-lagrangian-iter.tex")
 
 
-def main():
+def run_and_export(run_input):
+    seed, numpy_seed, name = run_input
 
     # run pendulum
-    pendulum_params = pendulum.PendulumParams(length=1, mass=1, g=-9.8,
-                                              drag=0.1)
-    pendulum_dynamics = pendulum.pendulum_dynamics(pendulum_params)
-
-    def pendulum_sampler(rng, num_samples):
-        key1, key2 = random.split(rng, 2)
-        return np.stack((random.uniform(key1, (num_samples,),
-                                        minval=np.pi - np.pi / 6,
-                                        maxval=np.pi + np.pi / 6),
-                         random.uniform(key2, (num_samples,),
-                                        minval=-0.5,
-                                        maxval=0.5)),
-                        axis=-1)
-
-    n = 2
-    m = 1
-    x_goal = np.array([np.pi, 0.])
-    u_goal = np.zeros((m,))
-    qmat = np.array([[2, 0.],
-                     [0., 1]])
-    rmat = np.ones((1, 1))
-
-    all_times, avg_diff, test_loss, train_loss, lagr = run_experiment(
-        lr_cost=0.1,
-        lr_constraints=0.5,
-        rtol=1e-3,
-        atol=1e-6,
-        seed=0,
-        numpy_seed=42,
-        n=n,
-        m=m,
-        batch_size=2,
-        num_train_iterations=2000,
-        num_train_samples=10,
-        num_test_samples=500,
-        num_eval_steps=2000,
-        dynamics=pendulum_dynamics,
-        x_goal=x_goal,
-        u_goal=u_goal,
-        qmat=qmat,
-        rmat=rmat,
-        dt=1.,
-        state_sampler=pendulum_sampler,
-    )
-    print("final avg diff:", avg_diff[-1])
-    print("final test loss:", test_loss[-1])
-
-    plot(all_times, avg_diff, test_loss, train_loss, lagr, "pendulum")
-    plt.show()
+    # pendulum_params = pendulum.PendulumParams(length=1, mass=1, g=-9.8,
+    #                                           drag=0.1)
+    # pendulum_dynamics = pendulum.pendulum_dynamics(pendulum_params)
+    #
+    # def pendulum_sampler(rng, num_samples):
+    #     key1, key2 = random.split(rng, 2)
+    #     return np.stack((random.uniform(key1, (num_samples,),
+    #                                     minval=np.pi - np.pi / 6,
+    #                                     maxval=np.pi + np.pi / 6),
+    #                      random.uniform(key2, (num_samples,),
+    #                                     minval=-0.5,
+    #                                     maxval=0.5)),
+    #                     axis=-1)
+    #
+    # n = 2
+    # m = 1
+    # x_goal = np.array([np.pi, 0.])
+    # u_goal = np.zeros((m,))
+    # qmat = np.array([[2, 0.],
+    #                  [0., 1]])
+    # rmat = np.ones((1, 1))
+    #
+    # all_times, avg_diff, test_loss, train_loss, lagr = run_experiment(
+    #     lr_cost=0.1,
+    #     lr_constraints=0.5,
+    #     rtol=1e-3,
+    #     atol=1e-6,
+    #     seed=0,
+    #     numpy_seed=42,
+    #     n=n,
+    #     m=m,
+    #     batch_size=2,
+    #     num_train_iterations=2000,
+    #     num_train_samples=10,
+    #     num_test_samples=500,
+    #     num_eval_steps=2000,
+    #     dynamics=pendulum_dynamics,
+    #     x_goal=x_goal,
+    #     u_goal=u_goal,
+    #     qmat=qmat,
+    #     rmat=rmat,
+    #     dt=1.,
+    #     state_sampler=pendulum_sampler,
+    # )
+    # print("final avg diff:", avg_diff[-1])
+    # print("final test loss:", test_loss[-1])
+    #
+    # plot(all_times, avg_diff, test_loss, train_loss, lagr, "pendulum")
+    # plt.show()
 
     # run cartpole
     cartpole_params = cartpole.CartPoleParams(length=1, cart_mass=1,
@@ -330,8 +332,8 @@ def main():
         lr_constraints=0.5,
         rtol=1e-3,
         atol=1e-4,
-        seed=0,
-        numpy_seed=42,
+        seed=seed,
+        numpy_seed=numpy_seed,
         n=n,
         m=m,
         batch_size=50,
@@ -347,11 +349,29 @@ def main():
         dt=1.,
         state_sampler=cartpole_sampler,
     )
-    print("final avg diff:", avg_diff[-1])
-    print("final test loss:", test_loss[-1])
 
-    plot(all_times, avg_diff, test_loss, train_loss, lagr, "cartpole")
-    plt.show()
+    filename = name + "-{}-{}.pkl".format(seed, numpy_seed)
+    with open(filename, "wb") as f:
+        pickle.dump((all_times, avg_diff, test_loss, train_loss, lagr), f)
+
+    # print("final avg diff:", avg_diff[-1])
+    # print("final test loss:", test_loss[-1])
+
+    # plot(all_times, avg_diff, test_loss, train_loss, lagr, "cartpole")
+    # plt.show()
+
+
+def main():
+    num_seeds = 10
+    seeds = onp.random.randint(0, 2**32 - 1, num_seeds)
+    np_seeds = onp.random.randint(0, 2**32 - 1, num_seeds)
+
+    with multiprocessing.Pool() as pool:
+        async_results = pool.imap_unordered(
+            run_and_export, zip(seeds, np_seeds,
+                                itertools.repeat("cartpole-run")))
+        for i, _ in enumerate(async_results):
+            print("{}/{}".format(i, num_seeds))
 
 
 if __name__ == "__main__":
