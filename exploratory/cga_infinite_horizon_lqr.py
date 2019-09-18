@@ -74,7 +74,7 @@ def loss(targets, estimates):
 def run_experiment(n, m, batch_size, num_train_samples, num_test_samples,
                    num_eval_steps, seed, numpy_seed, dynamics, x_goal, u_goal,
                    qmat, rmat, lr_cost, lr_constraints, rtol, atol, dt,
-                   state_sampler):
+                   state_sampler, num_train_iterations):
     rng = random.PRNGKey(seed)
     onp.random.seed(numpy_seed)
 
@@ -158,7 +158,7 @@ def run_experiment(n, m, batch_size, num_train_samples, num_test_samples,
     all_params = []
     all_times = []
 
-    for i in range(500):
+    for i in range(num_train_iterations):
         old_params = get_lagr_params(opt_state)
         all_params.append(old_params)
 
@@ -261,6 +261,7 @@ def main():
     #     n=n,
     #     m=m,
     #     batch_size=1,
+    #     num_train_iterations = 2000,
     #     num_train_samples=2,
     #     num_test_samples=500,
     #     num_eval_steps=2000,
@@ -308,7 +309,7 @@ def main():
     rmat = np.ones((1, 1))
 
     all_times, avg_diff, test_loss = run_experiment(
-        lr_cost=0.01,
+        lr_cost=0.002,
         lr_constraints=0.1,
         rtol=1e-3,
         atol=1e-3,
@@ -317,6 +318,7 @@ def main():
         n=n,
         m=m,
         batch_size=20,
+        num_train_iterations=2000,
         num_train_samples=1000,
         num_test_samples=500,
         num_eval_steps=2000,
