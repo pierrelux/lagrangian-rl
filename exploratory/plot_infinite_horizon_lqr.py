@@ -18,11 +18,14 @@ def plot(test_loss, title):
 
     plt.figure()
     plt.plot(np.arange(len(avg_test_loss)), avg_test_loss, label="Test loss")
-    plt.fill_between(np.arange(len(avg_test_loss)), avg_test_loss - yerr,
+    plt.fill_between(np.arange(len(avg_test_loss)),
+                     np.clip(avg_test_loss - yerr, 1e-10, np.inf),
                      avg_test_loss + yerr, alpha=0.2)
     plt.ylabel("MSE")
     plt.xlabel("# iterations")
     plt.legend()
+    plt.semilogy()
+    plt.ylim((1e-4, 20))
     tikzplotlib.save("averaged-" + title + "-loss-iter.tex")
 
 
