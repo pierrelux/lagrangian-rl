@@ -24,6 +24,7 @@ import numpy as onp
 import scipy.linalg as olinalg
 
 import matplotlib.pyplot as plt
+import tikzplotlib
 
 
 Demos = collections.namedtuple("Demos", "xs us")
@@ -204,34 +205,30 @@ def run_experiment(n, m, batch_size, num_train_samples, num_test_samples,
     return all_times, avg_diff, test_loss, all_train_loss, all_lagrangian
 
 
-def plot(all_times, avg_diff, test_loss, train_loss, lagr, title=None):
+def plot(all_times, avg_diff, test_loss, train_loss, lagr, title):
     plt.figure()
     plt.plot(np.arange(len(avg_diff)), avg_diff)
     plt.ylabel("Mean cost-to-go difference")
     plt.xlabel("# iterations")
-    if title:
-        plt.title(title)
+    tikzplotlib.save(title + "-cost-iter.tex")
 
     plt.figure()
     plt.plot(np.array(all_times) - all_times[0], avg_diff)
     plt.ylabel("Mean cost-to-go difference")
     plt.xlabel("Relative walltime")
-    if title:
-        plt.title(title)
+    tikzplotlib.save(title + "-cost-time.tex")
 
     plt.figure()
     plt.plot(np.arange(len(avg_diff)), test_loss)
     plt.ylabel("Test loss")
     plt.xlabel("# iterations")
-    if title:
-        plt.title(title)
+    tikzplotlib.save(title + "-loss-iter.tex")
 
     plt.figure()
     plt.plot(np.array(all_times) - all_times[0], test_loss)
     plt.ylabel("Test loss")
     plt.xlabel("Relative walltime")
-    if title:
-        plt.title(title)
+    tikzplotlib.save(title + "-loss-time.tex")
 
     lagr_plus_loss = np.array(lagr) + np.array(train_loss)
     plt.figure()
@@ -240,8 +237,7 @@ def plot(all_times, avg_diff, test_loss, train_loss, lagr, title=None):
              label="Train Lagrangian + loss")
     plt.xlabel("# iterations")
     plt.legend()
-    if title:
-        plt.title(title)
+    tikzplotlib.save(title + "-train-lagrangian-iter.tex")
 
 
 def main():
@@ -294,7 +290,7 @@ def main():
     print("final avg diff:", avg_diff[-1])
     print("final test loss:", test_loss[-1])
 
-    plot(all_times, avg_diff, test_loss, train_loss, lagr, "Pendulum")
+    plot(all_times, avg_diff, test_loss, train_loss, lagr, "pendulum")
     plt.show()
 
     # run cartpole
@@ -354,7 +350,7 @@ def main():
     print("final avg diff:", avg_diff[-1])
     print("final test loss:", test_loss[-1])
 
-    plot(all_times, avg_diff, test_loss, train_loss, lagr, "Cartpole")
+    plot(all_times, avg_diff, test_loss, train_loss, lagr, "cartpole")
     plt.show()
 
 
