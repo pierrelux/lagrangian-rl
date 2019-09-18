@@ -315,15 +315,15 @@ def main():
     rmat = np.ones((1, 1))
 
     all_times, avg_diff, test_loss = run_experiment(
-        lr_cost=0.002,
-        lr_constraints=0.1,
+        lr_cost=0.005,
+        lr_constraints=0.5,
         rtol=1e-3,
         atol=1e-3,
         seed=0,
         numpy_seed=42,
         n=n,
         m=m,
-        batch_size=20,
+        batch_size=10,
         num_train_iterations=2000,
         num_train_samples=1000,
         num_test_samples=500,
