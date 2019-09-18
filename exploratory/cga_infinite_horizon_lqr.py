@@ -142,6 +142,7 @@ def run_experiment(n, m, batch_size, num_train_samples, num_test_samples,
         val, grads = jax.value_and_grad(lagr_func, (0, 1))(*params, data=data)
         logs = {
             "lagrangian": val,
+            "train loss": batch_loss(get_params(params), data),
         }
         return opt_update(i, grads, opt_state, data=data), logs
 
