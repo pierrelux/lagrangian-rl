@@ -1,7 +1,7 @@
 import jax.numpy as np
 
 
-def policy(kmat, x_goal, kvec=None):
+def policy(kmat, x_goal=None, kvec=None):
     def policy(x, t):
         kmat_t = kmat
         kvec_t = kvec
@@ -11,7 +11,11 @@ def policy(kmat, x_goal, kvec=None):
             if kvec_t is not None:
                 kvec_t = kvec[t]
 
-        u_t = np.dot(kmat_t, x_goal - x)
+        dx = -x
+        if x_goal is not None:
+            dx = dx + x_goal
+
+        u_t = np.dot(kmat_t, dx)
 
         if kvec_t is not None:
             u_t = u_t + kvec_t
