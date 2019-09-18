@@ -230,53 +230,59 @@ def plot(all_times, avg_diff, test_loss, title=None):
 
 
 def main():
-    # pendulum_params = pendulum.PendulumParams(length=1, mass=1, g=-9.8,
-    #                                           drag=0.1)
-    # pendulum_dynamics = pendulum.pendulum_dynamics(pendulum_params)
-    #
-    # def pendulum_sampler(rng, num_samples):
-    #     key1, key2 = random.split(rng, 2)
-    #     return np.stack((random.uniform(key1, (num_samples,),
-    #                                     minval=np.pi - np.pi / 6,
-    #                                     maxval=np.pi + np.pi / 6),
-    #                      random.uniform(key2, (num_samples,),
-    #                                     minval=-0.5,
-    #                                     maxval=0.5)),
-    #                     axis=-1)
-    #
-    # n = 2
-    # m = 1
-    # x_goal = np.array([np.pi, 0.])
-    # u_goal = np.zeros((m,))
-    # qmat = np.array([[2, 0.],
-    #                  [0., 1]])
-    # rmat = np.ones((1, 1))
-    #
-    # all_times, avg_diff, test_loss = run_experiment(
-    #     lr_cost = 0.01,
-    #     lr_constraints = 0.1,
-    #     atol=1e-5,
-    #     seed=0,
-    #     numpy_seed=42,
-    #     n=n,
-    #     m=m,
-    #     batch_size=1,
-    #     num_train_iterations = 2000,
-    #     num_train_samples=2,
-    #     num_test_samples=500,
-    #     num_eval_steps=2000,
-    #     dynamics=pendulum_dynamics,
-    #     x_goal=x_goal,
-    #     u_goal=u_goal,
-    #     qmat=qmat,
-    #     rmat=rmat,
-    #     dt=1.,
-    #     state_sampler=pendulum_sampler,
-    # )
-    #
-    # plot(all_times, avg_diff, test_loss, "Pendulum")
-    # plt.show()
 
+    # run pendulum
+    pendulum_params = pendulum.PendulumParams(length=1, mass=1, g=-9.8,
+                                              drag=0.1)
+    pendulum_dynamics = pendulum.pendulum_dynamics(pendulum_params)
+
+    def pendulum_sampler(rng, num_samples):
+        key1, key2 = random.split(rng, 2)
+        return np.stack((random.uniform(key1, (num_samples,),
+                                        minval=np.pi - np.pi / 6,
+                                        maxval=np.pi + np.pi / 6),
+                         random.uniform(key2, (num_samples,),
+                                        minval=-0.5,
+                                        maxval=0.5)),
+                        axis=-1)
+
+    n = 2
+    m = 1
+    x_goal = np.array([np.pi, 0.])
+    u_goal = np.zeros((m,))
+    qmat = np.array([[2, 0.],
+                     [0., 1]])
+    rmat = np.ones((1, 1))
+
+    all_times, avg_diff, test_loss = run_experiment(
+        lr_cost=0.1,
+        lr_constraints=0.5,
+        rtol=1e-3,
+        atol=1e-6,
+        seed=0,
+        numpy_seed=42,
+        n=n,
+        m=m,
+        batch_size=2,
+        num_train_iterations=2000,
+        num_train_samples=10,
+        num_test_samples=500,
+        num_eval_steps=2000,
+        dynamics=pendulum_dynamics,
+        x_goal=x_goal,
+        u_goal=u_goal,
+        qmat=qmat,
+        rmat=rmat,
+        dt=1.,
+        state_sampler=pendulum_sampler,
+    )
+    print("final avg diff:", avg_diff[-1])
+    print("final test loss:", test_loss[-1])
+
+    plot(all_times, avg_diff, test_loss, "Pendulum")
+    plt.show()
+
+    # run cartpole
     cartpole_params = cartpole.CartPoleParams(length=1, cart_mass=1,
                                               pole_mass=1., g=-9.8)
     cartpole_dynamics = cartpole.cartpole_dynamics(cartpole_params)
