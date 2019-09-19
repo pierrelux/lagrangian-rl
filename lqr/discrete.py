@@ -7,19 +7,26 @@ import jax.scipy
 from fax import lagrangian
 
 
-def rollout(x_init, lqr, us):
+def rollout(x_init, lqr, policy, num_steps):
 
-    if lqr.A.ndim < 3:
-        T = us.shape[0]
-        lqr = tree_util.tree_map(lambda x: np.repeat(x[None, :, :], (T, 1, 1)),
-                                 lqr)
-
-    def forward_step(x_t, params):
-        lqr, u_t = params
+    def timevarying_step(x_t, inputs):
+        t, lqr = inputs
+        u_t = policy(x_t, t)
         x_tp1 = lqr.A @ x_t + lqr.B @ u_t
-        return x_tp1, None
+        c_t = x_t @ (lqr.Q @ x_t) + u_t @ (lqr.R @ u_t)
+        return x_tp1, (x_t, u_t, c_t)
 
-    return lax.scan(forward_step, x_init, (lqr, us))[1]
+    def nonvarying_step(x_t, t):
+        return timevarying_step(x_t, (t, lqr))
+
+    step_rollout = nonvarying_step
+    values = lax.iota(np.int32, num_steps)
+
+    if lqr.A.ndim == 3:
+        step_rollout = timevarying_step
+        values = (values, lqr)
+
+    return lax.scan(step_rollout, x_init, values)
 
 
 def forward_recursion(x_init, K, k, F, f):
@@ -116,6 +123,10 @@ def riccati_operator(pmat, params):
     Y = B.T @ pmat @ A
     Z = np.linalg.solve(X, Y)
     return V - W @ Z + Q
+
+
+def rollout_cost_to_go(policy, lqr):
+    pass
 
 
 def gain_matrix(pmat, lqr):
