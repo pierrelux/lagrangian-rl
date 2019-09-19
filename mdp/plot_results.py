@@ -87,7 +87,7 @@ def make_polytope_figure(P, R, discount, rng, npolicies=100, box=None, delta=0.0
     return fig, ax
 
 
-def mdp_to_dot(P, R, discount, bend_delta=10, draw_initial=False):
+def mdp_to_dot(P, R, discount, bend_delta=20, draw_initial=False):
     del discount
     graph = gv.Digraph(
         body=['d2tdocpreamble = "\\usetikzlibrary{automata}"',
@@ -137,10 +137,12 @@ def export_graph(prefix, dot_code):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Process some integers.')
     parser.add_argument('solution', type=str)
+    parser.add_argument('--bend', type=int, default=10)
     arguments = parser.parse_args()
 
     with open(arguments.solution, 'rb') as fp:
-        synthetic_transition, synthetic_reward = pickle.load(fp)
+        data = pickle.load(fp)
+        synthetic_transition, synthetic_reward = data['solution']
 
     mdp = polytope.DadashiFig2d()
     rng = np.random.RandomState(0)
@@ -154,6 +156,7 @@ if __name__ == "__main__":
     plt.savefig('true_polytope.pdf')
     tikzplotlib.save('true_polytope.tex')
 
-    source = mdp_to_dot(synthetic_transition, synthetic_reward, mdp.discount)
+    source = mdp_to_dot(synthetic_transition, synthetic_reward,
+                        mdp.discount, bend_delta=arguments.bend)
     export_graph('synthetic', source)
-    export_graph('true', mdp_to_dot(*mdp.mdp))
+    export_graph('true', mdp_to_dot(*mdp.mdp, bend_delta=arguments.bend))
