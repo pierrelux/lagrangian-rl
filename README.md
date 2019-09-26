@@ -1,2 +1,3 @@
-# cga
-Autograd, Jax implementation of CGA by Schäfer and Anandkumar (2019)
+# Competitive Differentiation in RL
+
+Experiments for the paper *A Lagrangian Method for Inverse Problems in Reinforcement Learning*. 
